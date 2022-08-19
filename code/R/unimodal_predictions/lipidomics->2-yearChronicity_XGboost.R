@@ -75,10 +75,12 @@ draw_confusion_matrix <- function(cm, ratio=FALSE) {
   text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
   
   # add in the accuracy information 
-  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
-  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
-  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
-  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+  text(10, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(10, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(50, 35, names(cm$byClass[11]), cex=1.5, font=2)
+  text(50, 20, round(as.numeric(cm$byClass[11]), 3), cex=1.4)
+  text(90, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(90, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
 }
 ###############
 
@@ -101,6 +103,16 @@ mtbl <- mtbl %>%
 whole_set <- inner_join(w3Chronicity, mtbl, by = "pident")
 whole_set$Remitted_depression <- revalue(whole_set$Remitted_depression, c("remitted"="remitted", "non-remitted"="not_remitted")) #otherwise an error will occur, as non-remitted is not a valeid R variable name.
 table(whole_set$Remitted_depression) # 398 (50,4%) remitted, 392 (49,6%) non-remitted
+
+#### Test for difference in batch distribution in outcomes ####
+batches <- read.spss("data/blood_and_saliva_variables/W1/metabolomics/N1_A420R_batches_included.sav", to.data.frame = T, use.missings = F) %>% 
+  mutate(pident = as.factor(pident)) %>% 
+  select(pident, ametab) %>% 
+  inner_join(whole_set, by = "pident") %>% 
+  mutate(ametab = droplevels(ametab))
+
+contingency <- table(batches$Remitted_depression, batches$ametab)
+chisq.test(contingency, simulate.p.value = T)
 
 ##############################################################################################################
 ## Using heldout test set 
@@ -154,7 +166,7 @@ segTrain[names(trainLipidMins)] <- segTrain[names(trainLipidMins)] %>%
 sum(colMeans(is.na(segTrain))>0.1) # nope
 
 #impute lipidomic variables
-pp <- preProcess(segTrain[names(trainLipidMins)], method = c("zv", "knnImpute"), k = 5, knnSummary = median)
+pp <- preProcess(segTrain[names(trainLipidMins)], method = c("zv", "bagImpute"))
 transformedTrain <- predict(pp, newdata = segTrain[names(trainLipidMins)])
 segTrain[names(trainLipidMins)] <- transformedTrain
 
@@ -169,6 +181,12 @@ segTest[names(trainLipidMins)] <- segTest[names(trainLipidMins)] %>%
 transformedTest <- predict(pp, newdata = segTest[names(trainLipidMins)])
 segTest[names(trainLipidMins)] <- transformedTest #lipidomics
 
+# write_rds(segTrain, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTrain_bagImputedPreProcessingLipidomics.RDS")
+# write_rds(segTest, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTest_bagImputedPreProcessingLipidomics.RDS")
+
+segTrain <- read_rds("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTrain_bagImputedPreProcessingLipidomics.RDS")
+segTest <- read_rds("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTest_bagImputedPreProcessingLipidomics.RDS")
+
 ##############################################################################################################
 ## Fit model 
 ##############################################################################################################
@@ -178,13 +196,13 @@ toc_hour <- function() {
   hours <- (x$toc - x$tic) / 3600
   print(paste(c("or ", as.character(round(hours, digits = 2)), " hours"),collapse = ""))
 }
-hyperparams <- 1000 #number of hyperparameter combinations to use in tuning
+hyperparams <- 1000  #number of hyperparameter combinations to use in tuning
 
-## set seed list for reproduction
-set.seed(42)
-seeds <- vector(mode = "list", length = 101)
-for(i in 1:100) seeds[[i]] <- sample.int(1000, hyperparams)
-seeds[[101]] <- sample.int(1000,1)
+# ## set seed list for reproduction
+# set.seed(42)
+# seeds <- vector(mode = "list", length = 101)
+# for(i in 1:100) seeds[[i]] <- sample.int(1000, hyperparams)
+# seeds[[101]] <- sample.int(1000,1)
 
 adaptControl <- trainControl(method = "adaptive_cv",
                              number = 10, repeats = 10,
@@ -193,7 +211,7 @@ adaptControl <- trainControl(method = "adaptive_cv",
                              summaryFunction = twoClassSummary,
                              search = "random", 
                              allowParallel = TRUE,
-                             preProcOptions = list(thresh = 0.99),
+                             preProcOptions = list(thresh = 0.95),
                              # seeds = seeds,
                              verboseIter = TRUE)
 tic()
@@ -209,18 +227,27 @@ xgbTune <- train(x = segTrain[,-1],
 toc_hour()
 
 xgbTune
-# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/enTune4_v2.RDS")
-xgbTune <- readRDS("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/enTune4_v2.RDS")
-
-xgbTune$finalModel
-plot(xgbTune, metric = "ROC", scales = list(x = list(log =2)))
-roc_imp <- varImp(enTune, scale = FALSE) # ROC per variable
-roc_imp
+# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/xgbTuneLipids_v2.RDS")
+xgbTune <- readRDS("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/xgbTuneLipids_v2.RDS")
+xgbTune$finalModel$tuneValue
 
 ## predictions on test set:
 xgbPred <- predict(xgbTune, segTest[,-1])
 cm <- confusionMatrix(xgbPred, segTest[,1])
 draw_confusion_matrix(cm, ratio = TRUE)
+
+accuracies <- list()
+for(i in seq(0.4, 0.6, 0.01)){
+  pred_ <- factor(ifelse(predict(xgbTune, segTest[,-1], type="prob")$remitted>i,"remitted","not_remitted"), levels = c("remitted", "not_remitted"))
+  cm_ <- confusionMatrix(pred_, segTest[,1])
+  accuracies <- append(accuracies, cm_$overall[1])
+}
+names(accuracies) <- seq(0.4, 0.6, 0.01)
+opt_thresh <- as.numeric(names(accuracies[accuracies == max(sapply(accuracies, max))]))
+XGbPred <- factor(ifelse(predict(xgbTune, segTest[,-1], type="prob")$remitted>opt_thresh,"remitted","not_remitted"), levels = c("remitted", "not_remitted"))
+cm <- confusionMatrix(XGbPred, factor(segTest$Remitted_depression, levels = c("remitted", "not_remitted")))
+draw_confusion_matrix(cm, ratio = TRUE)
+
 
 #Get predicted class probabilities so we can build ROC curve.
 xgbProbs <- predict(xgbTune, segTest[,-1], type="prob")
@@ -229,16 +256,16 @@ head(xgbProbs)
 #build ROC curve
 xgbROC <- roc(segTest[,1], xgbProbs[,"remitted"])
 auc(xgbROC)
+ci.auc(xgbROC)
 
 #plot ROC curve
-plot(enROC, type = "S")
 ggplot(data.frame(specificity = xgbROC$specificities, sensitivity = xgbROC$sensitivities), aes(specificity, sensitivity)) +
   geom_path() +
   scale_x_reverse() +
   geom_abline(intercept = 1, slope = 1, colour='grey') +
   coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE, clip = "on") +
   theme_classic() +
-  labs(title = paste0("AUROC =", signif(auc(xgbROC), 3)))
+  labs(title = paste0("AUROC =", signif(auc(xgbROC), 2)))
 
 
 

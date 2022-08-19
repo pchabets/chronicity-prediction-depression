@@ -46,7 +46,7 @@ getDoParWorkers()
 
 ## Fit model
 #set number of hyperparameter combinations to use in CV
-hyperparams <- 100
+hyperparams <- 1000
 
 ## set seed list for reproduction
 set.seed(101)
@@ -97,10 +97,14 @@ xgbTune <- train(x = segTrain[,-1],
 toc_hour()
 print("need to save!")
 
-# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_transcriptomics_95%.RDS")
+# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_transcriptomics_TopVariance_boruta_selection_95%_maxdepth3.RDS.RDS")
 xgbTune <- readRDS("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_transcriptomics_TopVariance_boruta_selection_95%_maxdepth3.RDS")
-xgbTune$finalModel
+xgbTune$finalModel$tuneValue
 plot(density(xgbTune$resample$ROC))
+
+#variable importance check
+var_imp <- varImp(xgbTune, scale = FALSE)
+var_imp$importance
 
 ###function for visualizing confusionMatrix:
 draw_confusion_matrix <- function(cm, ratio=FALSE) {
@@ -165,10 +169,12 @@ draw_confusion_matrix <- function(cm, ratio=FALSE) {
   text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
   
   # add in the accuracy information 
-  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
-  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
-  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
-  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+  text(10, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(10, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(50, 35, names(cm$byClass[11]), cex=1.5, font=2)
+  text(50, 20, round(as.numeric(cm$byClass[11]), 3), cex=1.4)
+  text(90, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(90, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
 }
 ###############
 
@@ -176,6 +182,20 @@ draw_confusion_matrix <- function(cm, ratio=FALSE) {
 XGbPred <- predict(xgbTune, segTest[,-1])
 cm <- confusionMatrix(XGbPred, segTest[,1])
 draw_confusion_matrix(cm, ratio = TRUE)
+
+accuracies <- list()
+for(i in seq(0.4, 0.6, 0.01)){
+  pred_ <- factor(ifelse(predict(xgbTune, segTest[,-1], type="prob")$remitted>i,"remitted","not_remitted"), levels = c("remitted", "not_remitted"))
+  cm_ <- confusionMatrix(pred_, segTest[,1])
+  accuracies <- append(accuracies, cm_$overall[1])
+}
+names(accuracies) <- seq(0.4, 0.6, 0.01)
+opt_thresh <- as.numeric(names(accuracies[accuracies == max(sapply(accuracies, max))]))[1]
+XGbPred <- factor(ifelse(predict(xgbTune, segTest[,-1], type="prob")$remitted>opt_thresh,"remitted","not_remitted"), levels = c("remitted", "not_remitted"))
+cm <- confusionMatrix(XGbPred, factor(segTest$Remitted_depression, levels = c("remitted", "not_remitted")))
+draw_confusion_matrix(cm, ratio = TRUE)
+
+#variable importance
 var_imp <- varImp(xgbTune, scale = FALSE)
 var_imp$importance
 
@@ -195,7 +215,6 @@ ggplot(data.frame(specificity = XGbROC$specificities, sensitivity = XGbROC$sensi
   coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE, clip = "on") +
   theme_classic() +
   labs(title = paste0("AUROC =", signif(auc(XGbROC), 2)))
-
 
 
 

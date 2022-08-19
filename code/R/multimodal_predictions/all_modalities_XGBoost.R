@@ -8,50 +8,30 @@ library(pROC)
 library(tictoc)
 setwd("/Users/philippehabets/Dropbox/STRESS_INDEX/")
 
-# segTrain <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_95%_TRAIN.csv")
-# segTrain <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_98%_TRAIN.csv")
-segTrain <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_95%_TRAIN_maxdepth3.csv")
-# segTrain <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_98%_TRAIN_maxdepth3.csv")
-
-# segTest <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_95%_TEST.csv")
-# segTest <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_98%_TEST.csv")
-segTest <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_95%_TEST_maxdepth3.csv")
-# segTest <- read_csv("scripts/VM/Python/output/all_features_boruta_selection_98%_TEST_maxdepth3.csv")
-
-segTrain <- as.data.frame(segTrain[,-c(1:2)])
-segTest <- as.data.frame(segTest[,-c(1:2)])
+segTrain <- read_csv("data/multimodal/wave1_omics_clinical_segTrain_final_selection.csv") %>% 
+  select(-c(pident, applate))
+segTest <- read_csv("data/multimodal/wave1_omics_clinical_segTest_final_selection.csv") %>% 
+  select(-c(pident, applate))
 
 segTrain$Remitted_depression <- as.factor(segTrain$Remitted_depression)
 segTest$Remitted_depression <- as.factor(segTest$Remitted_depression)
 
-summary(segTrain$Remitted_depression) #remitted/non-remitted = 220/205
-summary(segTest$Remitted_depression) #remitted/non-remitted = 55/51
+summary(segTrain$Remitted_depression) #remitted/non-remitted = 209/196
+summary(segTest$Remitted_depression) #remitted/non-remitted = 52/49
 
 #Initialize parallel processing
 registerDoMC(detectCores()-2)
 getDoParWorkers()
 
-
 ## Fit model
 #set number of hyperparameter combinations to use in CV
-hyperparams <- 100
+hyperparams <- 1000
 
 ## set seed list for reproduction
 set.seed(101)
 seeds <- vector(mode = "list", length = 101)
 for(i in 1:100) seeds[[i]] <- sample.int(1000, hyperparams)
 seeds[[101]] <- sample.int(1000,1)
-
-# train_ctrl <- trainControl(method="repeatedcv",
-#                            number = 10,
-#                            repeats = 10,
-#                            summaryFunction = twoClassSummary,
-#                            search = "random",
-#                            classProbs = TRUE,
-#                            preProcOptions = list(thresh = 0.95), 
-#                            seeds = seeds,
-#                            allowParallel = TRUE,
-#                            verboseIter = TRUE)
 
 adaptControl <- trainControl(method = "adaptive_cv",
                              number = 10, repeats = 10,
@@ -74,7 +54,7 @@ toc_hour <- function() {
 ##train model
 tic() 
 xgbTune <- train(x = segTrain[,-1],
-                 y = segTrain[,1],
+                 y = segTrain$Remitted_depression,
                  method = "xgbTree",
                  tuneLength = hyperparams,
                  #tuneGrid = grid,
@@ -83,10 +63,10 @@ xgbTune <- train(x = segTrain[,-1],
                  preProcess = c("zv"),
                  verbose = TRUE)
 toc_hour()
-print("save results!")
-# XGbTune
-# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_allFeatures_95%_maxdepth3.RDS")
-xgbTune <- readRDS("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_allFeatures_95%_maxdepth3.RDS")
+
+xgbTune
+# saveRDS(xgbTune, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_allFeatures_final.RDS")
+xgbTune <- readRDS("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/XGbTune_allFeatures_final.RDS")
 xgbTune$finalModel
 plot(density(xgbTune$resample$ROC))
 
@@ -153,17 +133,21 @@ draw_confusion_matrix <- function(cm, ratio=FALSE) {
   text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
   
   # add in the accuracy information 
-  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
-  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
-  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
-  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+  text(10, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(10, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(50, 35, names(cm$byClass[11]), cex=1.5, font=2)
+  text(50, 20, round(as.numeric(cm$byClass[11]), 3), cex=1.4)
+  text(90, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(90, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
 }
 ###############
 
 ## predictions on test set:
 XGbPred <- predict(xgbTune, segTest[,-1])
-cm <- confusionMatrix(XGbPred, segTest[,1])
+cm <- confusionMatrix(XGbPred, segTest$Remitted_depression)
 draw_confusion_matrix(cm, ratio = TRUE)
+
+#Variable importance
 var_imp <- varImp(xgbTune, scale = FALSE)
 var_imp$importance
 
@@ -172,7 +156,7 @@ XGbProbs <- predict(xgbTune, segTest[,-1], type="prob")
 head(XGbProbs)
 
 #build ROC curve
-XGbROC <- roc(segTest[,1], XGbProbs[,"remitted"])
+XGbROC <- roc(segTest$Remitted_depression, XGbProbs[,"not_remitted"])
 auc(XGbROC)
 
 #plot ROC curve
@@ -182,7 +166,49 @@ ggplot(data.frame(specificity = XGbROC$specificities, sensitivity = XGbROC$sensi
   geom_abline(intercept = 1, slope = 1, colour='grey') +
   coord_fixed(ratio = 1, xlim = NULL, ylim = NULL, expand = TRUE, clip = "on") +
   theme_classic() +
-  labs(title = paste0("AUROC =", signif(auc(XGbROC), 2)))
+  labs(title = paste0("AUROC =", signif(auc(XGbROC), 3)))
+
+# test significance of difference with best modal (proteomics + clinical)
+xgb_prot_clin <- readRDS("scripts/Predictions_explorative/R.scripts/data/roc_2ychronicity_clinical.RDS")
+roc.test(xgb_prot_clin, XGbROC, method='delong')
+
+########  #SHAP (Shapley Additive Explanation) of variables ########
+# Top 10 in plot with buildin plot function of xgboost package
+xgb.plot.shap(data = as.matrix(segTrain[xgbTune$finalModel$feature_names]), model = xgbTune$finalModel, top_n = 10)
+
+# With SHAP for xgboost package:
+library(SHAPforxgboost)
+dataX <- as.matrix(segTrain[,xgbTune$finalModel$feature_names])
+shap_values <- shap.values(xgb_model = xgbTune$finalModel, X_train = dataX)
+shap_values$mean_shap_score
+
+shap.plot.summary.wrap1(xgbTune$finalModel,dataX, top_n=50, dilute = F)
+
+strip_ap <- function(x) {
+  #function to strip variable names of "a" or "ap" if protein
+  if(str_starts(x, "a")) {
+    #if string starts with "a", it is either a protein or clinical variable
+    if(str_starts(x, "ap")){
+      #if string starts with "ap", it's a protein, strip fist two letters
+      x <- str_sub(x, start = 3)
+    } else {
+      #if string starts with only "a", it's a clinical variable, so strip first letter
+      x <- str_sub(x, start = 2)
+    }
+  } else {
+    #if string does not start with "a", it is either 'Age', "Sex", PRS, metabolite-PCA or transcriptomic variable: keep all letters
+    x <- x
+  }
+  return(x)
+}
+
+analyte_names <- read_csv("/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/analyte_names.csv")
+analyte_shap <- data.frame(symbol = sapply(names(shap_values$mean_shap_score), strip_ap), 
+                           mean_shap_score =  shap_values$mean_shap_score) %>% 
+  left_join(y = analyte_names, by = c("symbol" = "Analyte abbreviation")) %>% 
+  select(1,3,2)
+# write_excel_csv(analyte_shap, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/data/shap_xgb_all_modalities.csv")
+
 
 
 
