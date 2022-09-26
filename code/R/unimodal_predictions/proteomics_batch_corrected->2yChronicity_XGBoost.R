@@ -65,23 +65,23 @@ draw_confusion_matrix <- function(cm, ratio=FALSE) {
   # add in the specifics 
   plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
   text(10, 85, names(cm$byClass[1]), cex=3, font=2)
-  text(10, 70, round(as.numeric(cm$byClass[1]), 3), cex=3)
+  text(10, 70, format(round(as.numeric(cm$byClass[1]), 2), nsmall=2), cex=3)
   text(40, 85, names(cm$byClass[2]), cex=3, font=2)
-  text(40, 70, round(as.numeric(cm$byClass[2]), 3), cex=3)
+  text(40, 70, format(round(as.numeric(cm$byClass[2]), 2), nsmall=2), cex=3)
   text(65, 85, names(cm$byClass[5]), cex=3, font=2)
-  text(65, 70, round(as.numeric(cm$byClass[5]), 3), cex=3)
+  text(65, 70, format(round(as.numeric(cm$byClass[5]), 2), nsmall=2), cex=3)
   text(90, 85, names(cm$byClass[6]), cex=3, font=2)
-  text(90, 70, round(as.numeric(cm$byClass[6]), 3), cex=3)
+  text(90, 70, format(round(as.numeric(cm$byClass[6]), 2), nsmall=2), cex=3)
   
   # add in the accuracy information 
   text(10, 35, names(cm$overall[1]), cex=3, font=2)
-  text(10, 20, round(as.numeric(cm$overall[1]), 3), cex=3)
+  text(10, 20, format(round(as.numeric(cm$overall[1]), 2), nsmall=2), cex=3)
   text(40, 35, names(cm$byClass[11]), cex=3, font=2)
-  text(40, 20, round(as.numeric(cm$byClass[11]), 3), cex=3)
+  text(40, 20, format(round(as.numeric(cm$byClass[11]), 2), nsmall=2), cex=3)
   text(65, 35, names(cm$overall[2]), cex=3, font=2)
-  text(65, 20, round(as.numeric(cm$overall[2]), 3), cex=3)
+  text(65, 20, format(round(as.numeric(cm$overall[2]), 2), nsmall=2), cex=3)
   text(90, 35, names(cm$byClass[7]), cex=3, font=2)
-  text(90, 20, round(as.numeric(cm$byClass[7]), 3), cex=3)
+  text(90, 20, format(round(as.numeric(cm$byClass[7]), 2), nsmall=2), cex=3)
 }
 ###############
 
