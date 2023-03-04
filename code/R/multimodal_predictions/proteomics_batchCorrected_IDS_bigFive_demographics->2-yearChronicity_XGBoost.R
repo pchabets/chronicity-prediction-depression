@@ -181,6 +181,11 @@ segTest <- as.data.frame(whole_set[-trainIndex,])
 summary(segTrain$Remitted_depression) #remitted/non-remitted = 250/240
 summary(segTest$Remitted_depression) #remitted/non-remitted = 62/59
 
+# save train and test set with pident column
+# write_csv(segTrain, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTrain_prot_clin.csv")
+# write_csv(segTest, "/Users/philippehabets/Dropbox/STRESS_INDEX/scripts/Predictions_explorative/R.scripts/2-yearChronicity/output/segTest_prot_clin.csv")
+
+
 ## Proceed with segTrain (no imputations have occurred yet)
 ##############################################################################################################
 ## for each batch (applate), calculate median and IQR for each analyte in train set #############################
